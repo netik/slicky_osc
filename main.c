@@ -31,7 +31,7 @@ int writeBuffer(unsigned char buf[65]) {
 
     if (isConnected()) {
       res = hid_write(hidDevice, buf, 65); // 65 on success, -1 on failure
-      if (res < 0) printf("Error: Problem writing to hid device.");
+      if (res < 0) printf("Error: Pro   em writing to hid device.");
     }
     else 
       printf("Error: No device connected.");

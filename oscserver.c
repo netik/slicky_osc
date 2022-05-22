@@ -15,14 +15,20 @@
 #include "tinyosc.h"
 
 #define DEBUG
+/* set this to disable all HID operations */
+#define DISABLE_USB 1
+
 #define MAX_STR 255
 #define VENDOR_ID 0x04D8
 #define PRODUCT_ID 0xEC24
+#define NUM_BLINKS 5
 
 #define nullptr (NULL *)
 #define uint8_t unsigned char
 
 static volatile bool keepRunning = true;
+
+typedef uint32_t color_rgb_t;
 
 // handle Ctrl+C
 static void sigintHandler(int x) {
@@ -31,13 +37,15 @@ static void sigintHandler(int x) {
 
 hid_device *hidDevice;
 
-// remember the color, which we'll update once every second.
-int currentColor = 0x000000;
+// Some configurable options here for initial state
+color_rgb_t currentColor = 0xff0000; // start red
 int blinks_to_do = 0; // if positive, we'll blink and decrement this.
 bool blink_on_change = true;
 bool blinking = false;
-bool lastState = true;
-
+long loops = 0; // how many times have we cycled
+long loop_modulo = 2; // how many loops in a frame
+struct timeval timeout = {0,500 * 1000}; // udp select times out after 1 second = 1 loop
+    
 bool isConnected() {
     if (hidDevice != NULL) hid_close(hidDevice);
     hidDevice = hid_open(VENDOR_ID, PRODUCT_ID, NULL);
@@ -56,8 +64,10 @@ int writeBuffer(unsigned char buf[65]) {
       if (res < 0) log_error("Error: Problem writing to hid device.");
     }
     else 
-      log_info("Error: No device connected.");
-
+      {
+        log_info("Error: No device connected.");
+        exit(1);
+      }
     return res;
 }
 
@@ -77,8 +87,6 @@ int setColor(char r, char g, char b, char w) {
 
     return writeBuffer(buf);
 }
-
-typedef uint32_t color_rgb_t;
 
 color_rgb_t util_hsv_to_rgb(float H, float S, float V) {
   H = fmodf(H, 1.0);
@@ -133,9 +141,13 @@ color_rgb_t util_hsv_to_rgb(float H, float S, float V) {
 }
 
 void led_set_rgb(color_rgb_t rgb) {
+  log_debug("set color to %06x", rgb);
+
+#ifndef DISABLE_USB
   setColor((rgb >> 16) & 0xFF, 
            (rgb >> 8) & 0xFF,
             rgb & 0xFF, 0);
+#endif
 }
 
 void led_pattern_rainbow(float* p_hue, uint8_t repeat) {
@@ -169,7 +181,7 @@ void process_osc_msg(tosc_message osc, int len) {
     blinking = false;
     led_set_rgb((color_rgb_t) newcolor);
     if (blink_on_change) {
-      blinks_to_do=6;
+      blinks_to_do=NUM_BLINKS;
     }
   }
 
@@ -185,7 +197,7 @@ void process_osc_msg(tosc_message osc, int len) {
     }
 
     if (blink_on_change) {
-      blinks_to_do=6;
+      blinks_to_do=NUM_BLINKS;
     }
   }
 
@@ -195,15 +207,14 @@ void process_osc_msg(tosc_message osc, int len) {
     if (blinkparam > 0) {
       log_info("set blink on");
       blinking = true;
-      // is the color set to anything?
-      if (currentColor == 0) {
-        currentColor = 0xFF0000;
-      }
+      // is the color set to anything? if off, reset it to on (red)
     } else {
       log_info("set blink off");
       blinking = false;
-      led_set_rgb((color_rgb_t) currentColor);
     }
+    
+    // restore color to prevent false blackout
+    led_set_rgb((color_rgb_t) currentColor);
   }
 
   if (strncmp(cmd, "/blink_on_change", MAX_STR) == 0) {
@@ -223,15 +234,20 @@ void process_osc_msg(tosc_message osc, int len) {
 void handleBlink() { 
 
   if (blinking || blinks_to_do > 0) {  
-    if (lastState) {
+    
+    // do blink
+    if (loops % loop_modulo == 0) {
       led_set_rgb((color_rgb_t) currentColor);
     } else {
       led_set_rgb((color_rgb_t) 0x000000);
     }
-    lastState = !lastState;
 
-    if (blinks_to_do > 0) {
-      blinks_to_do--;
+    if (!blinking) {
+      if (blinks_to_do > 0) {
+        blinks_to_do--;
+      } else {  
+        led_set_rgb((color_rgb_t) currentColor);
+      }
     }
   }
 
@@ -239,7 +255,6 @@ void handleBlink() {
 
 int main() {
   int res = hid_init();
-  float p_hue = 0;
   char buffer[2048]; // declare a 2Kb buffer to read packet data into
 
   if (res < 0) {
@@ -260,15 +275,22 @@ int main() {
   sin.sin_port = htons(9000);
   sin.sin_addr.s_addr = INADDR_ANY;
   bind(fd, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
+
   log_info("tinyosc is now listening on port 9000.");
+#ifdef DISABLE_USB
+  log_info("USB Disabled in this build - no LED control");
+#endif
   log_info("Press Ctrl+C to stop.");
 
+  // attempt to write the current color so we know the HID is up
+  led_set_rgb(currentColor);
   while (keepRunning) {
     fd_set readSet;
     FD_ZERO(&readSet);
     FD_SET(fd, &readSet);
-    struct timeval timeout = {1, 0}; // select times out after 1 second
-    
+
+    loops++;
+
     if (select(fd+1, &readSet, NULL, NULL, &timeout) > 0) {
       // a packet is available to read
       struct sockaddr sa; // can be safely cast to sockaddr_in
@@ -279,7 +301,7 @@ int main() {
         if (tosc_isBundle(buffer)) {
           tosc_bundle bundle;
           tosc_parseBundle(&bundle, buffer, len);
-          const uint64_t timetag = tosc_getTimetag(&bundle);
+          //const uint64_t timetag = tosc_getTimetag(&bundle);
           tosc_message osc;
 
           while (tosc_getNextMessage(&bundle, &osc)) {

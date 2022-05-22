@@ -29,12 +29,8 @@ static const long hextable[] = {
 // Driver code 
 ssize_t udpSend(char *payload, socklen_t payload_len) { 
     int sockfd; 
-    char buffer[MAXLINE]; 
     ssize_t bytes_sent;
     struct sockaddr_in servaddr; 
-    int n; 
-    socklen_t len;
-    
     // Creating socket file descriptor 
     if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
         perror("socket creation failed"); 
@@ -78,7 +74,7 @@ ssize_t udpSend(char *payload, socklen_t payload_len) {
 long hexdec(const char *hex) {
    long ret = 0; 
    while (*hex && ret >= 0) {
-      ret = (ret << 4) | hextable[*hex++];
+      ret = (ret << 4) | hextable[(unsigned char)*hex++];
    }
    return ret; 
 }
