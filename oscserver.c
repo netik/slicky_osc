@@ -14,14 +14,15 @@
 #include "log.h"
 #include "tinyosc.h"
 
-#define DEBUG
+#undef DEBUG
+
 /* set this to disable all HID operations */
 #define DISABLE_USB 1
 
 #define MAX_STR 255
 #define VENDOR_ID 0x04D8
 #define PRODUCT_ID 0xEC24
-#define NUM_BLINKS 5
+#define NUM_BLINKS 6
 
 #define nullptr (NULL *)
 #define uint8_t unsigned char
@@ -192,7 +193,6 @@ void process_osc_msg(tosc_message osc, int len) {
     if (hexstr != NULL) {
       int newcolor = strtol(hexstr, NULL, 16);
       currentColor = newcolor;
-      blinking = false;
       led_set_rgb((color_rgb_t) newcolor);
     }
 
@@ -232,7 +232,9 @@ void process_osc_msg(tosc_message osc, int len) {
 }
 
 void handleBlink() { 
-
+#ifdef DEBUG
+ log_debug("handleBlink blinking: %s todo: %d", blinking ? "true" : "false", blinks_to_do);
+#endif
   if (blinking || blinks_to_do > 0) {  
     
     // do blink
