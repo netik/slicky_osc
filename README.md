@@ -30,9 +30,9 @@ The server typically listens for commands on all interfaces, UDP port 9000.
 
 Invalid commands will be logged with an error message and dropped.
 
-# Compile time options
+# Compile time #define options
 
-DEBUG - #define thsi to enable debugging and more logging of the HID Interface
+DEBUG - to enable debugging and more logging of the HID Interface
 
 NUM_BLINKS - Change the number of times the LED blinks when using `blink_on_change`
 
