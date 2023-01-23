@@ -175,6 +175,7 @@ void led_set_rgb(color_rgb_t rgb) {
 
 void process_osc_msg(tosc_message osc, int len) {
   char cmd[MAX_STR];
+  bzero(cmd, MAX_STR);
 
 #ifdef DEBUG
   log_debug("Received OSC message: [%i bytes] %s %s",
@@ -270,7 +271,7 @@ void handleBlink() {
 int main() {
   int res = hid_init();
   char buffer[2048]; // declare a 2Kb buffer to read packet data into
-
+  bzero(buffer, 2048);
   if (res < 0) {
     log_info("Error: Problem initializing the hidapi library.");
   }
