@@ -1,7 +1,7 @@
 CC=gcc
 SRCS=main.c
-INCLUDES=-I/opt/homebrew/Cellar/hidapi/0.12.0/include -I./log.c/src
-LIBS=-L/opt/homebrew/Cellar/hidapi/0.12.0/lib -lhidapi 
+INCLUDES=-I/opt/homebrew/Cellar/hidapi/0.13.1/include -I./log.c/src
+LIBS=-L/opt/homebrew/Cellar/hidapi/0.13.1/lib -lhidapi 
 CFLAGS=-Wall -g -DLOG_USE_COLOR
 
 all: rainbow oscserver oscclient

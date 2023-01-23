@@ -1,3 +1,14 @@
+/**
+ * @file oscserver.c
+ * @author John Adams (jna@retina.net)
+ * @brief Connects OSC commands to a Slicky LED USB Lamp
+ * @version 0.1
+ * @date 2023-01-23
+ * 
+ * @copyright Copyright (c) 2023 John Adams
+ * @license MIT
+ */
+
 #include "hidapi.h"
 #include <stdio.h>
 #include <math.h>
@@ -20,6 +31,8 @@
 #undef DISABLE_USB
 
 #define MAX_STR 255
+
+/* these are derived from the slicky source code and USB debugging */
 #define VENDOR_ID 0x04D8
 #define PRODUCT_ID 0xEC24
 #define NUM_BLINKS 6
@@ -40,12 +53,20 @@ hid_device *hidDevice;
 
 // Some configurable options here for initial state
 color_rgb_t currentColor = 0xff0000; // start red
-int blinks_to_do = 0; // if positive, we'll blink and decrement this.
-bool blink_on_change = true;
+
+// if true we blink when setcolor is called. 
+bool blink_on_change = true; 
+
+// if positive, we'll blink until it reaches zero and decrement this.
+int blinks_to_do = 0;
+
+// are we always blinking?
 bool blinking = false;
+
 long loops = 0; // how many times have we cycled
 long loop_modulo = 2; // how many loops in a frame
-struct timeval timeout = {0,500 * 1000}; // udp select times out after 1 second = 1 loop
+
+struct timeval timeout = {0, 500 * 1000}; // udp select times out after 1 second = 1 loop
     
 bool isConnected() {
     if (hidDevice != NULL) hid_close(hidDevice);
@@ -184,6 +205,7 @@ void process_osc_msg(tosc_message osc, int len) {
     if (blink_on_change) {
       blinks_to_do=NUM_BLINKS;
     }
+    return;
   }
 
   if (strncmp(cmd, "/setcolorhex", MAX_STR) == 0) {
@@ -199,6 +221,7 @@ void process_osc_msg(tosc_message osc, int len) {
     if (blink_on_change) {
       blinks_to_do=NUM_BLINKS;
     }
+    return;
   }
 
   if (strncmp(cmd, "/blink", MAX_STR) == 0) {
@@ -210,11 +233,13 @@ void process_osc_msg(tosc_message osc, int len) {
       // is the color set to anything? if off, reset it to on (red)
     } else {
       log_info("set blink off");
+      blinks_to_do = 0;
       blinking = false;
     }
     
     // restore color to prevent false blackout
     led_set_rgb((color_rgb_t) currentColor);
+    return;
   }
 
   if (strncmp(cmd, "/blink_on_change", MAX_STR) == 0) {
@@ -227,16 +252,16 @@ void process_osc_msg(tosc_message osc, int len) {
       log_info("set blink_on_change off");
       blink_on_change = false;
     }
+    return;
   }
-
+  log_error("unrecognized command");
 }
 
 void handleBlink() { 
 #ifdef DEBUG
  log_debug("handleBlink blinking: %s todo: %d", blinking ? "true" : "false", blinks_to_do);
 #endif
-  if (blinking || blinks_to_do > 0) {  
-    
+  if (blinking || blinks_to_do > 0) {
     // do blink
     if (loops % loop_modulo == 0) {
       led_set_rgb((color_rgb_t) currentColor);
@@ -244,15 +269,13 @@ void handleBlink() {
       led_set_rgb((color_rgb_t) 0x000000);
     }
 
-    if (!blinking) {
-      if (blinks_to_do > 0) {
-        blinks_to_do--;
-      } else {  
+    if (blinks_to_do > 0) {
+      blinks_to_do--;
+      if (blinks_to_do == 0){
         led_set_rgb((color_rgb_t) currentColor);
       }
     }
   }
-
 }
 
 int main() {
@@ -279,6 +302,8 @@ int main() {
   bind(fd, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
 
   log_info("tinyosc is now listening on port 9000.");
+  log_info("blink_on_change=%d", blink_on_change);
+  
 #ifdef DISABLE_USB
   log_info("USB Disabled in this build - no LED control");
 #endif
@@ -318,7 +343,7 @@ int main() {
         }
       }
     }
-    handleBlink();
+   handleBlink();
   }
 
   // close the UDP socket
