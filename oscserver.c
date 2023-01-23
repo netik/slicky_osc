@@ -22,7 +22,7 @@
 #include <unistd.h>
 #include <strings.h>
 #include <stdlib.h> 
-#include "log.h"
+#include "log.c/src/log.h"
 #include "tinyosc.h"
 
 #undef DEBUG
@@ -45,7 +45,8 @@ static volatile bool keepRunning = true;
 typedef uint32_t color_rgb_t;
 
 // handle Ctrl+C
-static void sigintHandler(int x) {
+static void sigintHandler(int sig_num) {
+  log_info("Exiting on signal %d...",sig_num);
   keepRunning = false;
 }
 
@@ -172,18 +173,6 @@ void led_set_rgb(color_rgb_t rgb) {
 #endif
 }
 
-void led_pattern_rainbow(float* p_hue, uint8_t repeat) {
-  float hue_step = 1;
-
-  color_rgb_t rgb = util_hsv_to_rgb(*p_hue + (hue_step), 1, 1);
-  led_set_rgb(rgb);
-
-  *p_hue += 0.05;
-  if (*p_hue > 1) {
-    *p_hue -= 1;
-  }
-}
-
 void process_osc_msg(tosc_message osc, int len) {
   char cmd[MAX_STR];
 
@@ -193,9 +182,9 @@ void process_osc_msg(tosc_message osc, int len) {
             tosc_getAddress(&osc), // the OSC address string, e.g. "/button1"
             tosc_getFormat(&osc)); // the OSC format string, e.g. "f"
 #endif  
-  strncpy(cmd, tosc_getAddress(&osc), MAX_STR);
+  strncpy(cmd, tosc_getAddress(&osc), len);
 
-  log_info("cmd: %s", cmd);
+  log_info("cmd: %s len: %d", cmd, len);
   if (strncmp(cmd, "/setcolorint", MAX_STR) == 0) {
     /* we expect a 32-bit rgb color in hex which we will send as a 32-bit int */
     int newcolor = tosc_getNextInt32(&osc);

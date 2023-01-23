@@ -3,6 +3,8 @@
         "stdio.h": "c",
         "stdbool.h": "c",
         "math.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "signal.h": "c",
+        "_pthread_t.h": "c"
     }
 }
