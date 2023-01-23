@@ -17,7 +17,7 @@
 #undef DEBUG
 
 /* set this to disable all HID operations */
-#define DISABLE_USB 1
+#undef DISABLE_USB
 
 #define MAX_STR 255
 #define VENDOR_ID 0x04D8
