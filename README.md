@@ -21,14 +21,20 @@ For testing You can talk to this software using the included OSC client (oscclie
 
 The server typically listens for commands on all interfaces, UDP port 9000.
 
-|OSC Command|Argument Type|Usage|
-|-----------|-------------|-----|
-|setcolorint|int32|Sets lamp color using an integer|
-|setcolorhex|hex string|Sets LED color using a RGB hex string (e.g. ff0000 = red. 00ff00 = green. 0000ff = blue)
-|blink|int32, 0 or 1, default 0|Sets the LED light to blink indefinately|
-|blink_on_change|int32, 0 or 1, default 1|Blinks whenever setcolorint or setcolorhex is called. Default is three blinks.|
+|OSC Command|Type|Default|Usage|
+|-----------|-------------|----|----|
+|`setcolorint`|int32|ff0000|Sets lamp color using an integer|
+|`setcolorhex`|string (hex)|16711680 (0xff0000)|Sets LED color using a RGB hex string (e.g. ff0000 = red. 00ff00 = green. 0000ff = blue)
+|`blink`|int32|0|Sets the LED light to blink indefinately. Can be either 0 or 1.|
+|`blink_on_change`|int32|1|Blinks whenever setcolorint or setcolorhex is called. Can be either 0 or 1.|
 
 Invalid commands will be logged with an error message and dropped.
+
+# Compile time options
+
+DEBUG - #define thsi to enable debugging and more logging of the HID Interface
+
+NUM_BLINKS - Change the number of times the LED blinks when using `blink_on_change`
 
 # Compiling
 
