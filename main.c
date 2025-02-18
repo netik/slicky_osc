@@ -1,10 +1,9 @@
 #include "hidapi.h"
 #include <stdio.h>
-#include <stdbool.h>
 #include <math.h>
 #include <unistd.h>
 #include <stdint.h>
-
+#include <stdbool.h>
 #include "tinyosc.h"
 
 #define MAX_STR 255
@@ -16,7 +15,9 @@ hid_device *hidDevice;
 bool isConnected()
 {
   if (hidDevice != NULL)
+  {
     hid_close(hidDevice);
+  }
   hidDevice = hid_open(VENDOR_ID, PRODUCT_ID, NULL);
 
   if (hidDevice == NULL)
@@ -26,24 +27,29 @@ bool isConnected()
   return true;
 }
 
-int writeBuffer(unsigned char buf[65])
+int writeBuffer(uint8_t buf[65])
 {
   int res = -1;
 
   if (isConnected())
   {
     res = hid_write(hidDevice, buf, 65); // 65 on success, -1 on failure
-    if (res < 0) printf("Error: Problem writing to HID device.\n");
+    if (res < 0)
+    {
+      printf("Error: Problem writing to HID device.\n");
+    }
   }
   else
-    printf("Error: No device connected.");
+  {
+    printf("Error: No device connected.\n");
+  }
 
-  return res;
+  return res; 
 }
 
 int setColor(char r, char g, char b, char w)
 {
-  unsigned char buf[65]; // 65 bytes
+  uint8_t buf[65]; // 65 bytes
   // The first byte is the write endpoint (0x00).
   // 0A 04 00 00 WW BB GG RR
   buf[0] = 0x00;
@@ -69,7 +75,7 @@ int main()
 
   if (res < 0)
   {
-    printf("Error: Problem initializing the hidapi library.");
+    printf("Error: Problem initializing the hidapi library.\n");
     return -1;
   }
 
