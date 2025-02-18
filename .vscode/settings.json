@@ -5,6 +5,10 @@
         "math.h": "c",
         "stdlib.h": "c",
         "signal.h": "c",
-        "_pthread_t.h": "c"
-    }
+        "_pthread_t.h": "c",
+        "hidapi.h": "c"
+    },
+    "cSpell.words": [
+        "slicky"
+    ]
 }
