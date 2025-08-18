@@ -12,12 +12,23 @@
 #include <strings.h>
 #include <stdlib.h> 
 #include <getopt.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
 #include "log.h"
 #include "tinyosc.h"
 
 #define MAX_STR 255
 #define VENDOR_ID 0x04D8
 #define PRODUCT_ID 0xEC24
+#define SSDP_INTERVAL 5  // Send SSDP announcements every 30 seconds
+#define SSDP_PORT 1901
+#define SSDP_MULTICAST_IP "239.255.255.250"
 
 #define nullptr (NULL *)
 #define uint8_t unsigned char
@@ -80,6 +91,115 @@ void parse_arguments(int argc, char *argv[]) {
     }
 }
 
+// SSDP service announcement functions
+char* get_local_ip_address() {
+    static char ip_buffer[INET_ADDRSTRLEN];
+    
+    // Create a temporary socket to determine the local IP
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        log_debug("get_local_ip_address: socket failed, fallback to 127.0.0.1");
+        strcpy(ip_buffer, "127.0.0.1");
+        return ip_buffer;
+    }
+    
+    // Connect to a remote address (doesn't actually send data)
+    // This forces the OS to choose the correct interface
+    struct sockaddr_in remote_addr;
+    memset(&remote_addr, 0, sizeof(remote_addr));
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_port = htons(53);  // DNS port
+    remote_addr.sin_addr.s_addr = inet_addr("8.8.8.8");  // Google DNS
+    
+    if (connect(sock, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) < 0) {
+        log_debug("connect failed, fallback to 127.0.0.1");
+        close(sock);
+        strcpy(ip_buffer, "127.0.0.1");
+        return ip_buffer;
+    }
+    
+    // Get the local address from the socket
+    struct sockaddr_in local_addr;
+    socklen_t addr_len = sizeof(local_addr);
+    if (getsockname(sock, (struct sockaddr*)&local_addr, &addr_len) < 0) {
+        log_debug("getsockname failed: %s", strerror(errno));
+        close(sock);
+        strcpy(ip_buffer, "127.0.0.1");
+        return ip_buffer;
+    }
+    
+    close(sock);
+    
+    // Convert to string
+    if (inet_ntop(AF_INET, &local_addr.sin_addr, ip_buffer, INET_ADDRSTRLEN) == NULL) {
+        strcpy(ip_buffer, "127.0.0.1");
+    }
+    
+    return ip_buffer;
+}
+
+void send_ssdp_announcement(int port) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        log_error("Failed to create SSDP socket");
+        return;
+    }
+    
+    // Set socket options for multicast
+    int ttl = 4;  // TTL for local network
+    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl)) < 0) {
+        log_error("Failed to set multicast TTL");
+        close(sock);
+        return;
+    }
+    
+    // Get local IP address for the Location header
+    char* local_ip = get_local_ip_address();
+    
+    // Construct SSDP NOTIFY message
+    char buffer[2048];
+    int len = snprintf(buffer, sizeof(buffer),
+        "NOTIFY * HTTP/1.1\r\n"
+        "HOST: %s:%d\r\n"
+        "CACHE-CONTROL: max-age=1800\r\n"
+        "LOCATION: http://%s:%d/osc-cue-description.xml\r\n"
+        "NT: urn:schemas-upnp-org:service:OSC_CUE:1\r\n"
+        "NTS: ssdp:alive\r\n"
+        "SERVER: OSC_Cue_Light/1.0 UPnP/1.0\r\n"
+        "USN: uuid:OSC_Cue_Light_1.0::urn:schemas-upnp-org:service:OSC_CUE:1\r\n"
+        "\r\n",
+        SSDP_MULTICAST_IP, SSDP_PORT, local_ip, port);
+    
+    // Send to SSDP multicast address
+    struct sockaddr_in ssdp_addr;
+    memset(&ssdp_addr, 0, sizeof(ssdp_addr));
+    ssdp_addr.sin_family = AF_INET;
+    ssdp_addr.sin_port = htons(SSDP_PORT);
+    ssdp_addr.sin_addr.s_addr = inet_addr(SSDP_MULTICAST_IP);
+    
+    ssize_t sent = sendto(sock, buffer, len, 0, (struct sockaddr*)&ssdp_addr, sizeof(ssdp_addr));
+    
+    if (sent > 0) {
+        if (debug_mode) {
+            log_debug("SSDP service announcement sent for port %d (%zd bytes)", port, sent);
+            log_debug("Local IP: %s, Service: urn:schemas-upnp-org:service:OSC:1", local_ip);
+        }
+    } else {
+        log_error("Failed to send SSDP announcement: %s", strerror(errno));
+    }
+    
+    close(sock);
+}
+
+void announce_ssdp_service(int port) {
+    // Send initial announcement
+    send_ssdp_announcement(port);
+    
+    if (debug_mode) {
+        log_info("SSDP service announced: urn:schemas-upnp-org:service:OSC:1 on port %d", port);
+    }
+}
+
 // handle Ctrl+C
 static void sigintHandler(int x) {
   keepRunning = false;
@@ -112,7 +232,7 @@ int writeBuffer(unsigned char buf[65]) {
       if (res < 0) log_error("Error: Problem writing to hid device.");
     }
     else 
-      log_info("Error: No device connected.");
+      log_info("HID error: No device connected.");
 
     return res;
 }
@@ -302,6 +422,7 @@ int main(int argc, char *argv[]) {
   int res = hid_init();
   float p_hue = 0;
   char buffer[2048]; // declare a 2Kb buffer to read packet data into
+  static time_t last_ssdp_announcement = 0;
 
   if (res < 0) {
     log_info("Error: Problem initializing the hidapi library.");
@@ -324,20 +445,28 @@ int main(int argc, char *argv[]) {
   sin.sin_port = htons(port);
   sin.sin_addr.s_addr = INADDR_ANY;
   bind(fd, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
-  log_info("tinyosc is now listening on port %d.", port);
+  log_info("server is now listening on port %d UDP, advertising SSDP on port %d.", port, SSDP_PORT);
   log_info("Press Ctrl+C to stop.");
+
+  // announce SSDP service
+  log_debug("announce_ssdp_service start");
+  announce_ssdp_service(port);
+  log_debug("announce_ssdp_service done");
 
   while (keepRunning) {
     fd_set readSet;
     FD_ZERO(&readSet);
     FD_SET(fd, &readSet);
+
     struct timeval timeout = {1, 0}; // select times out after 1 second
     
+    log_debug("select start");
     if (select(fd+1, &readSet, NULL, NULL, &timeout) > 0) {
       // a packet is available to read
       struct sockaddr sa; // can be safely cast to sockaddr_in
       socklen_t sa_len = sizeof(struct sockaddr_in);
       int len = 0;
+      log_debug("recvfrom");
 
       while ((len = (int) recvfrom(fd, buffer, sizeof(buffer), 0, &sa, &sa_len)) > 0) {
         if (tosc_isBundle(buffer)) {
@@ -357,8 +486,25 @@ int main(int argc, char *argv[]) {
           process_osc_msg(osc, len);
         }
       }
+      
+      log_debug("select done");
+
     }
+    // Send periodic SSDP announcements
+    time_t current_time = time(NULL);
+    log_debug("current_time: %d, last_ssdp_announcement: %d", current_time, last_ssdp_announcement);
+    if (current_time - last_ssdp_announcement >= SSDP_INTERVAL) {
+      send_ssdp_announcement(port);
+      last_ssdp_announcement = current_time;
+      if (debug_mode) {
+        log_debug("Sent periodic SSDP announcement for port %d", port);
+      }
+    }
+
+    log_debug("handleBlink start");
     handleBlink();
+    log_debug("handleBlink done");
+
   }
 
   // close the UDP socket
