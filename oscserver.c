@@ -72,6 +72,7 @@ void parse_arguments(int argc, char *argv[]) {
         switch (opt) {
             case 'd':
                 debug_mode = true;
+                log_set_level(LOG_DEBUG);
                 break;
             case 'h':
                 print_usage(argv[0]);
@@ -423,6 +424,9 @@ int main(int argc, char *argv[]) {
   float p_hue = 0;
   char buffer[2048]; // declare a 2Kb buffer to read packet data into
   static time_t last_ssdp_announcement = 0;
+
+  log_set_level(LOG_INFO);
+
 
   if (res < 0) {
     log_info("Error: Problem initializing the hidapi library.");
