@@ -26,8 +26,10 @@
 #define MAX_STR 255
 #define VENDOR_ID 0x04D8
 #define PRODUCT_ID 0xEC24
-#define SSDP_INTERVAL 5  // Send SSDP announcements every 30 seconds
+#define SSDP_INTERVAL 5   // Send SSDP announcements every 5 seconds
+#define STATUS_INTERVAL 1 // Send /status to last sender every 1 second
 #define SSDP_PORT 1901
+#define FEEDBACK_PORT 9500  // UDP port for status/feedback (distinct from incoming OSC port)
 #define SSDP_MULTICAST_IP "239.255.255.250"
 
 #define nullptr (NULL *)
@@ -35,6 +37,7 @@
 
 static volatile bool keepRunning = true;
 static bool debug_mode = false;
+static bool test_mode = false;
 static int port = 9000;
 
 // Print usage information
@@ -45,6 +48,7 @@ void print_usage(const char *program_name) {
     printf("  -d, --debug     Enable debug mode\n");
     printf("  -h, --help      Show this help message\n");
     printf("  -p, --port      Specify port number (default: 9000)\n");
+    printf("  -t, --test      Test mode: run without USB device (no HID init or I/O)\n");
     printf("\n");
     printf("The OSC messages are sent to the /setcolorint and /setcolorhex addresses.\n");
     printf("\n");
@@ -54,16 +58,23 @@ void print_usage(const char *program_name) {
     printf("  /blink n            expects a 32-bit integer. Any value > 0 enables blinking.\n");
     printf("  /blink_on_change n  expects a 32-bit integer. Any value > 0 enables blinking on color change.\n");
     printf("\n");
+    printf("Status (server -> client, port %d):\n", FEEDBACK_PORT);
+    printf("  Reply: sent for each received packet. Periodic: every 1 second to last sender.\n");
+    printf("  /status/color nnnn        32-bit RGB color\n");
+    printf("  /status/blinking 0|1      continuous blink on (1) or off (0)\n");
+    printf("  /status/blink_on_change 0|1  blink on color change (1) or off (0)\n");
+    printf("\n");
     printf("Press Ctrl+C to stop.\n");
 }
 
 // Parse command line arguments
 void parse_arguments(int argc, char *argv[]) {
     int opt;
-    const char *short_options = "dhp:";
+    const char *short_options = "dhtp:";
     struct option long_options[] = {
         {"debug", no_argument, 0, 'd'},
         {"help", no_argument, 0, 'h'},
+        {"test", no_argument, 0, 't'},
         {"port", required_argument, 0, 'p'},
         {0, 0, 0, 0}
     };
@@ -77,6 +88,9 @@ void parse_arguments(int argc, char *argv[]) {
             case 'h':
                 print_usage(argv[0]);
                 exit(0);
+                break;
+            case 't':
+                test_mode = true;
                 break;
             case 'p':
                 port = atoi(optarg);
@@ -228,6 +242,9 @@ bool isConnected() {
 int writeBuffer(unsigned char buf[65]) {
     int res = -1;
 
+    if (test_mode) {
+        return 65;  /* pretend success, no USB I/O */
+    }
     if (isConnected()) {
       res = hid_write(hidDevice, buf, 65); // 65 on success, -1 on failure
       if (res < 0) log_error("Error: Problem writing to hid device.");
@@ -419,27 +436,63 @@ void handleBlink() {
 
 }
 
+// Send current light state as three OSC messages to the peer.
+// /status/color nnnn, /status/blinking 0|1, /status/blink_on_change 0|1
+void send_osc_status(int fd, const struct sockaddr *peer, socklen_t peer_len) {
+  char outbuf[128];
+  uint32_t n;
+  ssize_t sent;
+
+  n = tosc_writeMessage(outbuf, sizeof(outbuf), "/status/color", "i", currentColor);
+  if (n > 0) {
+    if (debug_mode) log_debug("status: /status/color %d (0x%06x)", currentColor, currentColor & 0xFFFFFF);
+    sent = sendto(fd, outbuf, (size_t)n, 0, peer, peer_len);
+    if (sent != (ssize_t)n && debug_mode) {
+      log_debug("send_osc_status: sendto %zd of %u", (long)sent, (unsigned)n);
+    }
+  }
+  n = tosc_writeMessage(outbuf, sizeof(outbuf), "/status/blinking", "i", blinking ? 1 : 0);
+  if (n > 0) {
+    if (debug_mode) log_debug("status: /status/blinking %d", blinking ? 1 : 0);
+    sent = sendto(fd, outbuf, (size_t)n, 0, peer, peer_len);
+    if (sent != (ssize_t)n && debug_mode) {
+      log_debug("send_osc_status: sendto %zd of %u", (long)sent, (unsigned)n);
+    }
+  }
+  n = tosc_writeMessage(outbuf, sizeof(outbuf), "/status/blink_on_change", "i", blink_on_change ? 1 : 0);
+  if (n > 0) {
+    if (debug_mode) log_debug("status: /status/blink_on_change %d", blink_on_change ? 1 : 0);
+    sent = sendto(fd, outbuf, (size_t)n, 0, peer, peer_len);
+    if (sent != (ssize_t)n && debug_mode) {
+      log_debug("send_osc_status: sendto %zd of %u", (long)sent, (unsigned)n);
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
-  int res = hid_init();
+  int res = 0;
   float p_hue = 0;
   char buffer[2048]; // declare a 2Kb buffer to read packet data into
   static time_t last_ssdp_announcement = 0;
 
   log_set_level(LOG_INFO);
 
-
-  if (res < 0) {
-    log_info("Error: Problem initializing the hidapi library.");
-  }
-
-  // open device
-  hidDevice = hid_open(VENDOR_ID, PRODUCT_ID, NULL);
+  // parse command line arguments first so we know test_mode before touching USB
+  parse_arguments(argc, argv);
 
   // register the SIGINT handler (Ctrl+C)
   signal(SIGINT, &sigintHandler);
 
-  // parse command line arguments
-  parse_arguments(argc, argv);
+  if (!test_mode) {
+    res = hid_init();
+    if (res < 0) {
+      log_info("Error: Problem initializing the hidapi library.");
+    }
+    hidDevice = hid_open(VENDOR_ID, PRODUCT_ID, NULL);
+  } else {
+    hidDevice = NULL;
+    log_info("Test mode: running without USB (no HID init or device open).");
+  }
 
   // open a socket to listen for datagrams (i.e. UDP packets) on the specified port
   const int fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -449,13 +502,17 @@ int main(int argc, char *argv[]) {
   sin.sin_port = htons(port);
   sin.sin_addr.s_addr = INADDR_ANY;
   bind(fd, (struct sockaddr *) &sin, sizeof(struct sockaddr_in));
-  log_info("server is now listening on port %d UDP, advertising SSDP on port %d.", port, SSDP_PORT);
+  log_info("server is now listening on port %d UDP, feedback on port %d, advertising SSDP on port %d.", port, FEEDBACK_PORT, SSDP_PORT);
   log_info("Press Ctrl+C to stop.");
 
   // announce SSDP service
   log_debug("announce_ssdp_service start");
   announce_ssdp_service(port);
   log_debug("announce_ssdp_service done");
+
+  time_t last_status_time = 0;
+  struct sockaddr_in last_status_peer;
+  bool have_status_peer = false;
 
   while (keepRunning) {
     fd_set readSet;
@@ -473,6 +530,13 @@ int main(int argc, char *argv[]) {
       log_debug("recvfrom");
 
       while ((len = (int) recvfrom(fd, buffer, sizeof(buffer), 0, &sa, &sa_len)) > 0) {
+        bool was_empty = !have_status_peer;
+        memcpy(&last_status_peer, &sa, sizeof(last_status_peer));
+        have_status_peer = true;
+        if (was_empty) {
+          last_status_time = time(NULL);  /* first periodic send in 1s */
+        }
+
         if (tosc_isBundle(buffer)) {
           tosc_bundle bundle;
           tosc_parseBundle(&bundle, buffer, len);
@@ -489,13 +553,26 @@ int main(int argc, char *argv[]) {
           // tosc_printMessage(&osc);
           process_osc_msg(osc, len);
         }
+        struct sockaddr_in feedback_dest;
+        memcpy(&feedback_dest, &sa, sizeof(feedback_dest));
+        feedback_dest.sin_port = htons(FEEDBACK_PORT);
+        send_osc_status(fd, (struct sockaddr *)&feedback_dest, sizeof(feedback_dest));
       }
       
       log_debug("select done");
 
     }
-    // Send periodic SSDP announcements
     time_t current_time = time(NULL);
+
+    // Send periodic status to last sender every STATUS_INTERVAL seconds (to feedback port)
+    if (have_status_peer && current_time - last_status_time >= STATUS_INTERVAL) {
+      struct sockaddr_in feedback_dest = last_status_peer;
+      feedback_dest.sin_port = htons(FEEDBACK_PORT);
+      send_osc_status(fd, (struct sockaddr *)&feedback_dest, sizeof(feedback_dest));
+      last_status_time = current_time;
+    }
+
+    // Send periodic SSDP announcements
     log_debug("current_time: %d, last_ssdp_announcement: %d", current_time, last_ssdp_announcement);
     if (current_time - last_ssdp_announcement >= SSDP_INTERVAL) {
       send_ssdp_announcement(port);
