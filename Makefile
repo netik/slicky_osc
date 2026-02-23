@@ -9,8 +9,8 @@ all: rainbow oscserver oscclient
 rainbow: rainbow.c
 	${CC} ${CFLAGS} $< -o rainbow ${LIBS}
 
-oscserver: oscserver.c
-	${CC} ${CFLAGS} $< tinyosc.c ./log.c/src/log.c -o oscserver ${INCLUDES} ${LIBS} 
+oscserver: oscserver.c cli.c ssdp.c led.c state.c tinyosc.c
+	${CC} ${CFLAGS} oscserver.c cli.c ssdp.c led.c state.c tinyosc.c ./log.c/src/log.c -o oscserver ${INCLUDES} ${LIBS} 
 
 oscclient: oscclient.c
 	${CC} ${CFLAGS} $< tinyosc.c -o oscclient ${INCLUDES} ${LIBS} 
