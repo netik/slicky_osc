@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <stdbool.h>
+#include <errno.h>
 
 static int port = 9000;
 static bool debug_mode = false;
@@ -60,13 +61,17 @@ void cli_parse_arguments(int argc, char *argv[]) {
             case 't':
                 test_mode = true;
                 break;
-            case 'p':
-                port = atoi(optarg);
-                if (port <= 0 || port > 65535) {
+            case 'p': {
+                char *end;
+                errno = 0;
+                long p = strtol(optarg, &end, 10);
+                if (errno != 0 || *end != '\0' || p <= 0 || p > 65535) {
                     fprintf(stderr, "Error: Port must be between 1 and 65535\n");
                     exit(1);
                 }
+                port = (int)p;
                 break;
+            }
             default:
                 cli_print_usage(argv[0]);
                 exit(1);

@@ -4,6 +4,7 @@
 #include "log.h"
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 static int current_color = 0x000000;
 static int blinks_to_do = 0;
@@ -36,10 +37,15 @@ void state_process_osc_msg(tosc_message *osc, int len, bool debug) {
     if (strncmp(cmd, "/setcolorhex", MAX_STR) == 0) {
         const char *hexstr = tosc_getNextString(osc);
         if (hexstr != NULL) {
-            int newcolor = (int)strtol(hexstr, NULL, 16);
-            current_color = newcolor;
-            blinking = false;
-            led_set_rgb((color_rgb_t)newcolor);
+            char *end;
+            errno = 0;
+            unsigned long u = strtoul(hexstr, &end, 16);
+            if (errno == 0 && (*end == '\0' || *end == ' ') && u <= 0xFFFFFFu) {
+                int newcolor = (int)u;
+                current_color = newcolor;
+                blinking = false;
+                led_set_rgb((color_rgb_t)newcolor);
+            }
         }
         if (blink_on_change) {
             blinks_to_do = 6;

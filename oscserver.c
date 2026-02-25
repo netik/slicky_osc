@@ -80,6 +80,11 @@ int main(int argc, char *argv[]) {
                     last_status_time = time(NULL);
                 }
 
+                /* Reject empty or oversized packets to avoid parser over-reads */
+                if (len <= 0 || (size_t)len > sizeof(buffer)) {
+                    continue;
+                }
+
                 if (tosc_isBundle(buffer)) {
                     tosc_bundle bundle;
                     tosc_parseBundle(&bundle, buffer, len);
@@ -88,8 +93,15 @@ int main(int argc, char *argv[]) {
                         state_process_osc_msg(&osc, len, cli_debug());
                     }
                 } else {
+                    /* Require NUL and comma within bounds so tinyosc doesn't over-read */
+                    size_t i;
+                    for (i = 0; i < (size_t)len && buffer[i] != '\0'; i++) { }
+                    if (i >= (size_t)len) continue;
+                    for ( ; i < (size_t)len && buffer[i] != ','; i++) { }
+                    if (i >= (size_t)len) continue;
+
                     tosc_message osc;
-                    tosc_parseMessage(&osc, buffer, len);
+                    if (tosc_parseMessage(&osc, buffer, len) != 0) continue;
                     state_process_osc_msg(&osc, len, cli_debug());
                 }
 
