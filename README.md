@@ -41,6 +41,7 @@ Produces `oscserver`, `oscclient`, and `rainbow`.
   ./oscserver
   ./oscserver -p 9000 -d    # custom port, debug logs
   ./oscserver -t            # test mode (no USB, for development)
+  ./oscserver -C -s 1 -g 1  # join esp_cue_light network (system 1, group 1)
   ```
 - **Client** (sends to localhost:9000):
   ```bash
@@ -59,6 +60,8 @@ Produces `oscserver`, `oscclient`, and `rainbow`.
 | `/setcolorhex` | `s` | Set color from hex string (e.g. `"ff0000"` or `"FF0000"`). |
 | `/blink` | `i` | Enable (value &gt; 0) or disable (0) continuous blinking. |
 | `/blink_on_change` | `i` | Enable (value &gt; 0) or disable (0) brief blink on color change. |
+| `/setcue1` | `i` | Set cue 1: `0` = RED, `1` = GREEN. Syncs to cue-light network when `-C` is enabled. |
+| `/setcue2` | `i` | Set cue 2: `0` = RED, `1` = GREEN. Syncs to cue-light network when `-C` is enabled. |
 
 ### Feedback (server → client)
 
@@ -69,6 +72,19 @@ Sent to the **source IP** of the last received packet, on **UDP port 9500** (see
 | `/status/color` | `i` | Current RGB color (32-bit). |
 | `/status/blinking` | `i` | `1` = continuous blink on, `0` = off. |
 | `/status/blink_on_change` | `i` | `1` = blink-on-change on, `0` = off. |
+
+## Cue-light network
+
+With `-C` / `--cue-net`, `oscserver` joins the [esp_cue_light](https://github.com/troupeit/esp_cue_light) LAN sync network:
+
+- **Discovers** peers via mDNS (`_cuelight._tcp`)
+- **Polls** `GET /api/cues` on each peer (same protocol as `cue_listen.c`)
+- **Pushes** `POST /api/cues` when cues change locally (via OSC or incoming sync)
+- **Advertises** itself as `SlickyOSC._cuelight._tcp` on port 9080 (configurable with `--cue-port`)
+
+Match `system_id` and `cue_group` to your ESP boards (`-s` / `-g`). The USB light follows cue 1 by default (`--cue-led 2` for cue 2): RED = `0xFF0000`, GREEN = `0x00FF00`.
+
+On Linux, install Avahi compat headers: `sudo apt install libavahi-compat-libdnssd-dev`.
 
 ## Configuration
 
@@ -85,6 +101,7 @@ Sent to the **source IP** of the last received packet, on **UDP port 9500** (see
 | `tinyosc.c` / `tinyosc.h` | OSC parse/serialize. |
 | `cli.c` / `cli.h` | Argument parsing and usage. |
 | `ssdp.c` / `ssdp.h` | SSDP announcements for discovery. |
+| `cuenet.c` / `cuenet.h` | mDNS discovery, HTTP `/api/cues` server, peer sync. |
 | `config.h` | Central constants (ports, IDs, intervals). |
 | `log.c/` | Submodule; used for leveled logging. |
 

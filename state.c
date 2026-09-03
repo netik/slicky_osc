@@ -1,5 +1,7 @@
 #include "state.h"
 #include "config.h"
+#include "cli.h"
+#include "cuenet.h"
 #include "led.h"
 #include "log.h"
 #include <string.h>
@@ -11,6 +13,33 @@ static int blinks_to_do = 0;
 static bool blink_on_change = true;
 static bool blinking = false;
 static bool last_state = true;
+
+static int cue_to_color(int cue) {
+    return cue ? CUENET_COLOR_GREEN : CUENET_COLOR_RED;
+}
+
+static void apply_cue_led(int cue_value) {
+    current_color = cue_to_color(cue_value);
+    blinking = false;
+    led_set_rgb((color_rgb_t)current_color);
+}
+
+void state_init(void) {
+    if (cli_cue_net_enabled()) {
+        apply_cue_led(0);
+    }
+}
+
+void state_on_cue_network_change(const cuenet_state_t *state, void *ctx) {
+    (void)ctx;
+    int cue_value = (cli_cue_led() == 2) ? state->cue2 : state->cue1;
+    log_info("cue network update: cue%d=%s (seq1=%lu seq2=%lu)",
+             cli_cue_led(), cue_value ? "GREEN" : "RED", state->seq1, state->seq2);
+    apply_cue_led(cue_value);
+    if (blink_on_change) {
+        blinks_to_do = 6;
+    }
+}
 
 void state_process_osc_msg(tosc_message *osc, int len, bool debug) {
     char cmd[MAX_STR];
@@ -75,6 +104,30 @@ void state_process_osc_msg(tosc_message *osc, int len, bool debug) {
         } else {
             log_info("set blink_on_change off");
             blink_on_change = false;
+        }
+    }
+
+    if (strncmp(cmd, "/setcue1", MAX_STR) == 0) {
+        int cueval = tosc_getNextInt32(osc) > 0 ? 1 : 0;
+        if (cuenet_enabled()) {
+            cuenet_set_cue(1, cueval);
+        } else if (cli_cue_led() == 1) {
+            apply_cue_led(cueval);
+            if (blink_on_change) {
+                blinks_to_do = 6;
+            }
+        }
+    }
+
+    if (strncmp(cmd, "/setcue2", MAX_STR) == 0) {
+        int cueval = tosc_getNextInt32(osc) > 0 ? 1 : 0;
+        if (cuenet_enabled()) {
+            cuenet_set_cue(2, cueval);
+        } else if (cli_cue_led() == 2) {
+            apply_cue_led(cueval);
+            if (blink_on_change) {
+                blinks_to_do = 6;
+            }
         }
     }
 }

@@ -10,4 +10,11 @@
 #define FEEDBACK_PORT 9500  /* UDP port for status/feedback (distinct from incoming OSC port) */
 #define SSDP_MULTICAST_IP "239.255.255.250"
 
+#define CUENET_POLL_MS 100
+#define CUENET_HTTP_PORT 9080
+#define CUENET_DEFAULT_SYSTEM_ID 1
+#define CUENET_DEFAULT_CUE_GROUP 1
+#define CUENET_COLOR_RED 0xFF0000
+#define CUENET_COLOR_GREEN 0x00FF00
+
 #endif /* CONFIG_H */

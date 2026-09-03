@@ -3,6 +3,7 @@
 #include "ssdp.h"
 #include "led.h"
 #include "state.h"
+#include "cuenet.h"
 #include "log.h"
 #include "tinyosc.h"
 #include <stdio.h>
@@ -38,6 +39,15 @@ int main(int argc, char *argv[]) {
         log_info("Test mode: running without USB (no HID init or device open).");
     }
 
+    state_init();
+
+    if (cli_cue_net_enabled()) {
+        if (!cuenet_start(cli_cue_system_id(), cli_cue_group(), cli_cue_http_port(),
+                          state_on_cue_network_change, NULL)) {
+            log_error("Failed to start cue network; continuing with OSC only.");
+        }
+    }
+
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     fcntl(fd, F_SETFL, O_NONBLOCK);
 
@@ -58,16 +68,19 @@ int main(int argc, char *argv[]) {
     time_t last_status_time = 0;
     struct sockaddr_in last_status_peer;
     bool have_status_peer = false;
+    long next_cue_poll_ms = cuenet_ms_now();
 
     while (keep_running) {
         fd_set read_set;
         FD_ZERO(&read_set);
         FD_SET(fd, &read_set);
+        int max_fd = fd;
 
         struct timeval timeout = {1, 0};
+        cuenet_prepare_select(&read_set, &max_fd, &timeout);
         log_debug("select start");
 
-        if (select(fd + 1, &read_set, NULL, NULL, &timeout) > 0) {
+        if (select(max_fd + 1, &read_set, NULL, NULL, &timeout) > 0) {
             struct sockaddr sa;
             socklen_t sa_len = sizeof(struct sockaddr_in);
             int len;
@@ -113,6 +126,13 @@ int main(int argc, char *argv[]) {
             log_debug("select done");
         }
 
+        cuenet_handle_select(&read_set);
+
+        if (cuenet_enabled() && cuenet_ms_now() >= next_cue_poll_ms) {
+            cuenet_poll_peers();
+            next_cue_poll_ms = cuenet_ms_now() + cuenet_poll_interval_ms();
+        }
+
         time_t now = time(NULL);
 
         if (have_status_peer && now - last_status_time >= STATUS_INTERVAL) {
@@ -136,6 +156,7 @@ int main(int argc, char *argv[]) {
         log_debug("handleBlink done");
     }
 
+    cuenet_stop();
     close(fd);
     return 0;
 }
