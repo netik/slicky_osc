@@ -18,15 +18,11 @@ The device is a Microchip USB HID product (Vendor `0x04D8`, Product `0xEC24`). C
   ```bash
   brew install hidapi
   ```
-- **log.c** — vendored logging (submodule):
-  ```bash
-  git submodule update --init --recursive
-  ```
+- **log.c** — vendored logging in `vendor/log/` (from [rxi/log.c](https://github.com/rxi/log.c))
 
 ## Building
 
 ```bash
-git submodule update --init --recursive
 make
 ```
 
@@ -102,7 +98,7 @@ On Linux, install Avahi compat headers: `sudo apt install libavahi-compat-libdns
 | `cli.c` / `cli.h` | Argument parsing and usage. |
 | `cuenet.c` / `cuenet.h` | mDNS discovery, HTTP `/api/cues` server, peer sync. |
 | `config.h` | Central constants (ports, IDs, intervals). |
-| `log.c/` | Submodule; used for leveled logging. |
+| `vendor/log/` | Vendored log.c; leveled logging. |
 
 ## Development
 

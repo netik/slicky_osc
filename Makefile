@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-g
-INCLUDES=-I/opt/homebrew/Cellar/hidapi/0.13.1/include -I./log.c/src
+INCLUDES=-I/opt/homebrew/Cellar/hidapi/0.13.1/include -Ivendor/log
 LIBS=-L/opt/homebrew/Cellar/hidapi/0.13.1/lib -lhidapi
 
 UNAME := $(shell uname)
@@ -9,7 +9,7 @@ ifneq ($(UNAME),Darwin)
   CUENET_LDFLAGS += -ldns_sd
 endif
 
-OSCSERVER_SRCS=oscserver.c cli.c led.c state.c tinyosc.c cuenet.c log.c/src/log.c
+OSCSERVER_SRCS=oscserver.c cli.c led.c state.c tinyosc.c cuenet.c vendor/log/log.c
 OSCSERVER_OBJS=$(OSCSERVER_SRCS:.c=.o)
 
 OSCCLIENT_SRCS=oscclient.c tinyosc.c
@@ -37,4 +37,4 @@ oscclient: $(OSCCLIENT_OBJS)
 clean:
 	rm -f rainbow oscserver oscclient
 	rm -f *.o *.d
-	rm -f log.c/src/*.o log.c/src/*.d
+	rm -f vendor/log/*.o vendor/log/*.d
