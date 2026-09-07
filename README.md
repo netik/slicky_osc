@@ -1,12 +1,12 @@
 # Slicky OSC
 
-OSC server and utilities for controlling a USB **Slicky Light** over the network. The main program listens for UDP OSC messages and drives the light via HID; optional SSDP discovery and status feedback are supported.
+OSC server and utilities for controlling a USB **Slicky Light** over the network. The main program listens for UDP OSC messages and drives the light via HID; status feedback is supported.
 
 ## Overview
 
 | Binary | Purpose |
 |--------|---------|
-| **oscserver** | Main daemon: UDP OSC listener, HID driver, SSDP discovery, status feedback |
+| **oscserver** | Main daemon: UDP OSC listener, HID driver, status feedback |
 | **oscclient** | Example CLI client: sends one OSC command and exits |
 | **rainbow** | Standalone demo: rainbow animation on the device (no OSC) |
 
@@ -88,19 +88,18 @@ On Linux, install Avahi compat headers: `sudo apt install libavahi-compat-libdns
 
 ## Configuration
 
-- **config.h** — Device IDs, SSDP/feedback ports, intervals, buffer sizes.
+- **config.h** — Device IDs, feedback ports, intervals, buffer sizes.
 - **CLI** — `oscserver` supports `-p` (port), `-d` (debug), `-t` (test mode). Run with `-h` for full help.
 
 ## Project layout
 
 | Path | Role |
 |------|------|
-| `oscserver.c` | Main loop: socket, select, OSC parse, state, SSDP. |
+| `oscserver.c` | Main loop: socket, select, OSC parse, state. |
 | `state.c` / `state.h` | OSC command handling and blink logic; builds feedback messages. |
 | `led.c` / `led.h` | HID open/close, color and rainbow; used by oscserver and rainbow. |
 | `tinyosc.c` / `tinyosc.h` | OSC parse/serialize. |
 | `cli.c` / `cli.h` | Argument parsing and usage. |
-| `ssdp.c` / `ssdp.h` | SSDP announcements for discovery. |
 | `cuenet.c` / `cuenet.h` | mDNS discovery, HTTP `/api/cues` server, peer sync. |
 | `config.h` | Central constants (ports, IDs, intervals). |
 | `log.c/` | Submodule; used for leveled logging. |

@@ -9,7 +9,7 @@ ifneq ($(UNAME),Darwin)
   CUENET_LDFLAGS += -ldns_sd
 endif
 
-OSCSERVER_SRCS=oscserver.c cli.c ssdp.c led.c state.c tinyosc.c cuenet.c log.c/src/log.c
+OSCSERVER_SRCS=oscserver.c cli.c led.c state.c tinyosc.c cuenet.c log.c/src/log.c
 OSCSERVER_OBJS=$(OSCSERVER_SRCS:.c=.o)
 
 OSCCLIENT_SRCS=oscclient.c tinyosc.c

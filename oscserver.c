@@ -1,6 +1,5 @@
 #include "config.h"
 #include "cli.h"
-#include "ssdp.h"
 #include "led.h"
 #include "state.h"
 #include "cuenet.h"
@@ -29,7 +28,6 @@ static void sigint_handler(int sig) {
 
 int main(int argc, char *argv[]) {
     char buffer[2048];
-    time_t last_ssdp = 0;
 
     log_set_level(LOG_INFO);
     cli_parse_arguments(argc, argv);
@@ -58,13 +56,9 @@ int main(int argc, char *argv[]) {
     sin.sin_addr.s_addr = INADDR_ANY;
     bind(fd, (struct sockaddr *)&sin, sizeof(sin));
 
-    log_info("Server is now listening on port %d UDP, feedback on port %d, advertising SSDP on port %d.",
-             cli_port(), FEEDBACK_PORT, SSDP_PORT);
+    log_info("Server is now listening on port %d UDP, feedback on port %d.",
+             cli_port(), FEEDBACK_PORT);
     log_info("Press Ctrl+C to stop.");
-
-    log_debug("announce_ssdp_service start");
-    ssdp_announce_service(cli_port());
-    log_debug("announce_ssdp_service done");
 
     time_t last_status_time = 0;
     struct sockaddr_in last_status_peer;
@@ -141,15 +135,6 @@ int main(int argc, char *argv[]) {
             feedback_dest.sin_port = htons(FEEDBACK_PORT);
             state_send_osc_status(fd, (struct sockaddr *)&feedback_dest, sizeof(feedback_dest), cli_debug());
             last_status_time = now;
-        }
-
-        if (now - last_ssdp >= SSDP_INTERVAL) {
-            log_debug("current_time: %ld, last_ssdp_announcement: %ld", (long)now, (long)last_ssdp);
-            ssdp_send_announcement(cli_port());
-            last_ssdp = now;
-            if (cli_debug()) {
-                log_debug("Sent periodic SSDP announcement for port %d", cli_port());
-            }
         }
 
         log_debug("handleBlink start");
