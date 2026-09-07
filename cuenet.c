@@ -720,6 +720,13 @@ static void http_handle_client(int client_fd) {
     close(client_fd);
 }
 
+static void set_client_blocking(int client_fd) {
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(client_fd, F_SETFL, flags & ~O_NONBLOCK);
+    }
+}
+
 static void http_server_accept(void) {
     for (;;) {
         int client = accept(g_listen_fd, NULL, NULL);
@@ -730,6 +737,8 @@ static void http_server_accept(void) {
             log_warn("cue HTTP accept failed: %s", strerror(errno));
             break;
         }
+        /* macOS/BSD inherit O_NONBLOCK from the listen socket; Linux does not. */
+        set_client_blocking(client);
         http_handle_client(client);
     }
 }
