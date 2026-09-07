@@ -22,6 +22,7 @@
 static volatile bool keep_running = true;
 
 static void sigint_handler(int sig) {
+    log_info("SIGINT received, shutting down...");
     (void)sig;
     keep_running = false;
 }
